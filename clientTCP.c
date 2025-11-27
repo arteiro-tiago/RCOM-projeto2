@@ -40,6 +40,7 @@ int main(int argc, char **argv) {
     int port;
     struct sockaddr_in server_addr;
     char buf[BUF_SIZE] = {0};
+    /* Use CRLF as required by the FTP specification */
     char bufuser[] = "USER anonymous\n";
     char bufpass[] = "PASS anonymous\n";
     size_t bytes;
@@ -76,7 +77,8 @@ int main(int argc, char **argv) {
             break;
         }
     }
-    sleep(0.1);
+        sleep(0.1); /* 100 ms */
+
 
     //////USER
 
@@ -128,7 +130,8 @@ int main(int argc, char **argv) {
 
     //////PASV
 
-    bytes = write(sockfd, "pasv\n", 6);
+    /* send PASV with CRLF and correct length */
+    bytes = write(sockfd, "PASV\n", strlen("PASV\n"));
     if (bytes > 0)
         printf("Bytes escritos %ld\n", bytes);
     else {
@@ -175,7 +178,7 @@ int main(int argc, char **argv) {
         exit(-1);
     }
     
-    bytes = write(sockfd, "RETR debian/README.html\r\n", strlen("RETR debian/README.html\r\n"));
+    bytes = write(sockfd, "RETR debian/README.html\n", 25);
 
     if (bytes > 0)
         printf("Bytes escritos %ld\n", bytes);
@@ -183,7 +186,7 @@ int main(int argc, char **argv) {
         perror("write()");
         exit(-1);
     }
-    sleep(0.1);
+    sleep(0.1); /* 100 ms */
     // Ler resposta do servidor FTP (canal de controle)
     while (1) {
         int n = read(sockfd, buf, BUF_SIZE - 1);
@@ -210,7 +213,8 @@ int main(int argc, char **argv) {
         buf[n] = '\0';
         printf("%s", buf);
     }
-    sleep(0.1);
+    sleep(0.1); /* 100 ms */
+     /* 100 ms */
     
 
     return 0;
