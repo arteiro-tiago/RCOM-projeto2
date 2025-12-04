@@ -8,11 +8,68 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include "getip.h"
 #include <string.h>
+#include <netdb.h>
 
 #define SERVER_PORT 21
 #define BUF_SIZE 4096
+
+char* extract_filename(char* path) {    
+    const char* last = strrchr(path, '/');
+    
+    if (last) {
+        return strdup(last + 1);
+    } else {
+        return strdup(path);
+    }
+}
+
+char** link_parser(char* link){
+    char** linkInfo = (char**) malloc(4 * sizeof(char*));
+    int arroba = '@';
+    int barra = '/';
+    int pontos = ':';
+    int end = '\0';
+    char* arrobaptr = strchr(link, arroba);
+    char* next = strchr(link, barra) + 2;
+
+    if (arrobaptr!=NULL){
+        char* userptr = next;
+        char* passwordptr = strchr(userptr, pontos) + 1;
+        
+        int user_size = passwordptr-userptr;
+        char* user = (char*)malloc(user_size);
+        memcpy(user, userptr, user_size-1);
+
+        int password_size = arrobaptr-passwordptr;
+        char* password = (char*)malloc(password_size);
+        memcpy(password, passwordptr, password_size);
+
+        next = arrobaptr + 1;
+
+        linkInfo[0]=user;
+        linkInfo[1]=password;
+    }
+
+    char* hostptr = next;
+    char* pathptr = strchr(next, barra);
+
+    int host_size = pathptr - hostptr;
+    char* host = (char*)malloc(host_size); 
+    memcpy(host, hostptr, host_size);
+
+    char* endptr = strchr(pathptr, end);
+
+    int path_size = endptr-pathptr;
+    char* path = (char*)malloc(path_size);
+    memcpy(path, pathptr+1, path_size-1); 
+
+    linkInfo[2]=host;
+    linkInfo[3]=path;
+
+    return linkInfo;
+}
+
 char* ipGetter(char *argv) {
     struct hostent *h;
     if ((h = gethostbyname(argv)) == NULL) {
@@ -40,16 +97,32 @@ int extractPort(char *buf, int bufsize){
     return p1 * 256 + p2;
 }
 
-
 int main(int argc, char **argv) {
-    char const *serv = ipGetter(argv[1]);  
+    if (argc < 2) {
+        exit(-1);
+    }
+    
+    char** linkInfo = link_parser(argv[1]);
+    if (!linkInfo) {
+        exit(-1);
+    }
+    
+    printf("USER: %s\n", linkInfo[0] ? linkInfo[0] : "(anonymous)");
+    printf("PASS: %s\n", linkInfo[1] ? linkInfo[1] : "(anonymous)");
+    printf("HOST: %s\n", linkInfo[2] ? linkInfo[2] : "(error)");
+    printf("PATH: %s\n", linkInfo[3] ? linkInfo[3] : "(error)");
+    
+    if (linkInfo[2]==NULL) {
+        exit(-1);
+    }
+    
+    char* serv = ipGetter(linkInfo[2]);
+    printf("\nIP: %s\n", serv ? serv : "error");
+    
     int sockfd;
     int port;
     struct sockaddr_in server_addr;
     char buf[BUF_SIZE] = {0};
-    /* Use CRLF as required by the FTP specification */
-    char bufuser[] = "USER rcom\n";
-    char bufpass[] = "PASS rcom\n";
     size_t bytes;
 
     /*server address handling*/
@@ -71,6 +144,8 @@ int main(int argc, char **argv) {
         exit(-1);
     }
 
+    printf("Conexão estabelecida!\n");
+
     while (1) {
         int n = read(sockfd, buf, BUF_SIZE - 1);
         if (n <= 0) {
@@ -84,22 +159,30 @@ int main(int argc, char **argv) {
             break;
         }
     }
-        sleep(0.1); /* 100 ms */
+    sleep(0.1);
 
 
     //////USER
 
-    bytes = write(sockfd, bufuser, strlen(bufuser));
+    char user_cmd[BUF_SIZE] = {0};
+    if (linkInfo[0] != NULL) {
+        snprintf(user_cmd, sizeof(user_cmd), "USER %s\r\n", linkInfo[0]);
+    } else {
+        strcpy(user_cmd, "USER anonymous\r\n");
+    }
+    
+    bytes = write(sockfd, user_cmd, strlen(user_cmd));
     if (bytes > 0)
         printf("Bytes escritos %ld\n", bytes);
     else {
         perror("write()");
         exit(-1);
     }
+    
     while (1) {
         int n = read(sockfd, buf, BUF_SIZE - 1);
         if (n <= 0) {
-            printf("erro de conexão!\n");
+            printf("erro de conexão!\r\n");
             break;
         }
         buf[n] = '\0';
@@ -111,15 +194,25 @@ int main(int argc, char **argv) {
     }
     sleep(0.1);
 
-    //////PASSWORD
 
-    bytes = write(sockfd, bufpass, strlen(bufpass));
+    //////PASS
+
+    char pass_cmd[BUF_SIZE] = {0};
+    if (linkInfo[1] != NULL) {
+        snprintf(pass_cmd, sizeof(pass_cmd), "PASS %s\r\n", linkInfo[1]);
+    } else {
+        strcpy(pass_cmd, "PASS anonymous\r\n");
+    }
+    
+    bytes = write(sockfd, pass_cmd, strlen(pass_cmd));
     if (bytes > 0)
         printf("Bytes escritos %ld\n", bytes);
     else {
         perror("write()");
         exit(-1);
     }
+
+
     while (1) {
         int n = read(sockfd, buf, BUF_SIZE - 1);
         if (n <= 0) {
@@ -135,10 +228,10 @@ int main(int argc, char **argv) {
     }
     sleep(0.1);
 
+
     //////PASV
 
-    /* send PASV with CRLF and correct length */
-    bytes = write(sockfd, "PASV\n", strlen("PASV\n"));
+    bytes = write(sockfd, "PASV\r\n", strlen("PASV\r\n"));
     if (bytes > 0)
         printf("Bytes escritos %ld\n", bytes);
     else {
@@ -159,6 +252,8 @@ int main(int argc, char **argv) {
             break;
         }
     }
+
+
     ////////////////////
     //////NEW TERM//////
     ////////////////////
@@ -184,17 +279,26 @@ int main(int argc, char **argv) {
         perror("connect()");
         exit(-1);
     }
-    
-    bytes = write(sockfd, "RETR debian/README.html\n", 25);
 
+    
+    //////RETR
+    if (!linkInfo[3]) {
+        exit(-1);
+    }
+    
+    char retr_cmd[BUF_SIZE];
+    snprintf(retr_cmd, sizeof(retr_cmd), "RETR %s\r\n", linkInfo[3]);
+    
+    bytes = write(sockfd, retr_cmd, strlen(retr_cmd));
     if (bytes > 0)
         printf("Bytes escritos %ld\n", bytes);
     else {
         perror("write()");
         exit(-1);
     }
-    sleep(0.1); /* 100 ms */
-    // Ler resposta do servidor FTP (canal de controle)
+    
+    sleep(0.1);
+    
     while (1) {
         int n = read(sockfd, buf, BUF_SIZE - 1);
         if (n <= 0) {
@@ -204,22 +308,71 @@ int main(int argc, char **argv) {
         buf[n] = '\0';
         printf("Resposta FTP: %s", buf);
 
-        if (strstr(buf, "226") != NULL) {
+        if (strstr(buf, "150") != NULL || strstr(buf, "125") != NULL) {
             break;
         }
     }
 
+    FILE* output = fopen(extract_filename(linkInfo[3]), "wb");
+    
+    int total_bytes = 0;
+    while ((bytes = read(sockfd2, buf, BUF_SIZE)) > 0) {
+        total_bytes += bytes;
+        if (output) {
+            fwrite(buf, 1, bytes, output);
+        }
+        printf("\rRecebidos: %d bytes", total_bytes);
+        fflush(stdout);
+    }
+    
+    fclose(output);
+    
+    printf("\nFIM DOS DADOS (total: %d)\n", total_bytes);
+    
+    bytes = read(sockfd, buf, BUF_SIZE - 1);
+    if (bytes > 0) {
+        buf[bytes] = '\0';
+        printf("Resposta: %s", buf);
+    }
+    
+    sleep(0.1);
+
+    //////QUIT
+
+    bytes = write(sockfd, "QUIT\r\n", strlen("QUIT\r\n"));
+    if (bytes > 0)
+        printf("Bytes escritos %ld\n", bytes);
+    else {
+        perror("write()");
+        exit(-1);
+    }
     while (1) {
-        int n = read(sockfd2, buf, BUF_SIZE - 1);
+        int n = read(sockfd, buf, BUF_SIZE - 1);
         if (n <= 0) {
+            printf("erro de conexão!\n");
             break;
         }
         buf[n] = '\0';
         printf("%s", buf);
-    }
-    sleep(0.1); /* 100 ms */
-     /* 100 ms */
-    
 
-    return 0;
+        if (strstr(buf, "221 ") != NULL) {
+            port = extractPort(buf, BUF_SIZE);
+            //CLOSES
+            close(sockfd2);
+            close(sockfd);
+            for (int i = 0; i < 4; i++) {
+                if (linkInfo[i]) free(linkInfo[i]);
+            }
+            free(linkInfo);
+            return 0;
+        }
+    }
+    //CLOSES
+    close(sockfd2);
+    close(sockfd);
+    for (int i = 0; i < 4; i++) {
+        if (linkInfo[i]) free(linkInfo[i]);
+    }
+    free(linkInfo);
+    return -1;
 }
