@@ -8,17 +8,26 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <unistd.h>
-
+#include "getip.h"
 #include <string.h>
 
 #define SERVER_PORT 21
-#define SERVER_ADDR "193.137.29.15"
 #define BUF_SIZE 4096
+char* ipGetter(char *argv) {
+    struct hostent *h;
+    if ((h = gethostbyname(argv)) == NULL) {
+        herror("gethostbyname()");
+        exit(-1);
+    }
+
+    return inet_ntoa(*((struct in_addr *) h->h_addr));
+}
+
+
 
 int extractPort(char *buf, int bufsize){
     int nums[6];
     int count = 0;
-
     char *token = strtok(buf, ",");
     while (token && count < 6) {
         nums[count++] = atoi(token);
@@ -33,22 +42,20 @@ int extractPort(char *buf, int bufsize){
 
 
 int main(int argc, char **argv) {
-
-    if (argc > 1)
-        printf("**** No arguments needed. They will be ignored. Carrying ON.\n");
+    char const *serv = ipGetter(argv[1]);  
     int sockfd;
     int port;
     struct sockaddr_in server_addr;
     char buf[BUF_SIZE] = {0};
     /* Use CRLF as required by the FTP specification */
-    char bufuser[] = "USER anonymous\n";
-    char bufpass[] = "PASS anonymous\n";
+    char bufuser[] = "USER rcom\n";
+    char bufpass[] = "PASS rcom\n";
     size_t bytes;
 
     /*server address handling*/
     bzero((char *) &server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(SERVER_ADDR);    /*32 bit Internet address network byte ordered*/
+    server_addr.sin_addr.s_addr = inet_addr(serv);    /*32 bit Internet address network byte ordered*/
     server_addr.sin_port = htons(SERVER_PORT);        /*server TCP port must be network byte ordered */
 
     /*open a TCP socket*/
@@ -162,7 +169,7 @@ int main(int argc, char **argv) {
     /*server address handling*/
     bzero((char *) &server_addr2, sizeof(server_addr2));
     server_addr2.sin_family = AF_INET;
-    server_addr2.sin_addr.s_addr = inet_addr(SERVER_ADDR);    /*32 bit Internet address network byte ordered*/
+    server_addr2.sin_addr.s_addr = inet_addr(serv);    /*32 bit Internet address network byte ordered*/
     server_addr2.sin_port = htons(port);        /*server TCP port must be network byte ordered */
 
     /*open a TCP socket*/
@@ -197,9 +204,7 @@ int main(int argc, char **argv) {
         buf[n] = '\0';
         printf("Resposta FTP: %s", buf);
 
-        if (strstr(buf, "150") != NULL || strstr(buf, "125") != NULL || 
-            strstr(buf, "226") != NULL || strstr(buf, "426") != NULL) {
-            // 150/125 = iniciando transferência, 226/426 = finalizando
+        if (strstr(buf, "226") != NULL) {
             break;
         }
     }
@@ -207,7 +212,6 @@ int main(int argc, char **argv) {
     while (1) {
         int n = read(sockfd2, buf, BUF_SIZE - 1);
         if (n <= 0) {
-            printf("erro de conexão2!\n");
             break;
         }
         buf[n] = '\0';
