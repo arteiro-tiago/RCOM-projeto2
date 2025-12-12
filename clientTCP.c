@@ -306,7 +306,7 @@ int main(int argc, char **argv) {
             break;
         }
         buf[n] = '\0';
-        printf("Resposta FTP: %s", buf);
+        printf("%s", buf);
 
         if (strstr(buf, "150") != NULL || strstr(buf, "125") != NULL) {
             break;
@@ -328,11 +328,20 @@ int main(int argc, char **argv) {
     fclose(output);
     
     printf("\nFIM DOS DADOS (total: %d)\n", total_bytes);
+    close(sockfd2);
     
-    bytes = read(sockfd, buf, BUF_SIZE - 1);
-    if (bytes > 0) {
-        buf[bytes] = '\0';
-        printf("Resposta: %s", buf);
+    while (1) {
+        int n = read(sockfd, buf, BUF_SIZE - 1);
+        if (n <= 0) {
+            printf("erro de conexão!\n");
+            break;
+        }
+        buf[n] = '\0';
+        printf("%s", buf);
+
+        if (strstr(buf, "2") != NULL) {
+            break;
+        }
     }
     
     sleep(0.1);
@@ -342,7 +351,7 @@ int main(int argc, char **argv) {
     bytes = write(sockfd, "QUIT\r\n", strlen("QUIT\r\n"));
     if (bytes > 0)
         printf("Bytes escritos %ld\n", bytes);
-    else {
+    else {https://mirrors.up.pt/libreoffice/TIMESTAMP
         perror("write()");
         exit(-1);
     }
@@ -356,9 +365,7 @@ int main(int argc, char **argv) {
         printf("%s", buf);
 
         if (strstr(buf, "221 ") != NULL) {
-            port = extractPort(buf, BUF_SIZE);
             //CLOSES
-            close(sockfd2);
             close(sockfd);
             for (int i = 0; i < 4; i++) {
                 if (linkInfo[i]) free(linkInfo[i]);
@@ -368,7 +375,6 @@ int main(int argc, char **argv) {
         }
     }
     //CLOSES
-    close(sockfd2);
     close(sockfd);
     for (int i = 0; i < 4; i++) {
         if (linkInfo[i]) free(linkInfo[i]);
