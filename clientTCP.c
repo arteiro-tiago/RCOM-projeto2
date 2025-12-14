@@ -321,7 +321,7 @@ int main(int argc, char **argv) {
         if (output) {
             fwrite(buf, 1, bytes, output);
         }
-        printf("\rRecebidos: %d bytes", total_bytes);
+        printf("Recebidos: %d bytes\r", total_bytes);
         fflush(stdout);
     }
     
